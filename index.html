@@ -21,6 +21,12 @@
 
   var url = CLAIM_BASE + "/claim?path=" + encodeURIComponent(location.pathname);
 
+  var guard = "dl_" + location.pathname;
+  try {
+    var t0 = sessionStorage.getItem(guard);
+    if (t0 && Date.now() - Number(t0) < 30000) return;
+  } catch (e) {}
+
   var tries = 0;
   function go() {
     fetch(url, { method: "GET", cache: "no-store" })
@@ -30,7 +36,12 @@
       })
       .then(function (j) {
         if (!j || !j.url) throw new Error("no url in response");
+        try { sessionStorage.setItem(guard, String(Date.now())); } catch (e) {}
         window.location.href = j.url;
+        setTimeout(function () {
+          try { window.close(); } catch (e) {}
+          try { window.location.replace("about:blank"); } catch (e) {}
+        }, 4000);
       })
       .catch(function () {
         if (++tries < 3) setTimeout(go, 3000);

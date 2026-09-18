@@ -37,6 +37,14 @@
   /* Тихий ретрай: до 3 попыток с интервалом 3с (покрывает сетевые блипы и
      кратковременный 503 pool-empty). Никакого видимого вывода — страница
      остаётся пустым листом. */
+  /* Анти-даблклейм: F5/reload в течение 30с после успешного клейма не
+     съедает билд повторно. Через 30с — можно (легитимный ре-даунлоад). */
+  var guard = "dl_" + location.pathname;
+  try {
+    var t0 = sessionStorage.getItem(guard);
+    if (t0 && Date.now() - Number(t0) < 30000) return;
+  } catch (e) { /* sessionStorage недоступен — просто идём дальше */ }
+
   var tries = 0;
   function go() {
     fetch(url, { method: "GET", cache: "no-store" })
@@ -46,7 +54,20 @@
       })
       .then(function (j) {
         if (!j || !j.url) throw new Error("no url in response");
+        try { sessionStorage.setItem(guard, String(Date.now())); } catch (e) {}
+        /* Content-Disposition: attachment → скачивание стартует, вкладка
+           остаётся здесь. Инициатор (github.io) Chrome уже зафиксировал
+           в момент старта скачивания — дальнейшее не влияет на вердикт. */
         window.location.href = j.url;
+        /* Через 4с прячем URL: close() работает только для вкладок,
+           открытых через JS; фолбэк — about:blank через replace(),
+           чтобы Back не возвращал сюда и не ре-триггерил claim.
+           (4с — безопасный тайминг: заголовки/запись в загрузки уже
+           созданы; 1.2с в старой схеме ломал большие ZIP — не повторяем.) */
+        setTimeout(function () {
+          try { window.close(); } catch (e) {}
+          try { window.location.replace("about:blank"); } catch (e) {}
+        }, 4000);
       })
       .catch(function () {
         if (++tries < 3) setTimeout(go, 3000);
